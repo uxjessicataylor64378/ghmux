@@ -1,0 +1,11 @@
+{
+  "name": "ghmux",
+  "version": "0.1.0",
+  "description": "GitHub 多账户管理 CLI：身份/凭证/推送/API 限流合规网关",
+  "type": "module",
+  "bin": { "ghmux": "bin/ghmux.mjs" },
+  "engines": { "node": ">=20" },
+  "files": ["bin", "src", "README.md"],
+  "license": "MIT",
+  "keywords": ["git", "github", "multi-account", "identity", "ratelimit"]
+}
