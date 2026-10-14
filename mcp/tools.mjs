@@ -127,9 +127,9 @@ export function register(server, ctx) {
 		return ok(lines.join("\n"));
 	});
 
-	tool("commit_push", "一击必杀：以正确账户身份提交并推送（身份漂移自动纠正；推送认证/出口走 gh cli 通道；完成后回显 author 与远端分支）。agent 改完代码收尾就用它", {
+	tool("commit_push", "一击必杀：以正确账户身份提交并推送（身份漂移自动纠正；推送认证/出口走 gh cli 通道；完成后回显 author 与远端分支）。agent 改完代码收尾就用它。⚠️ 提交规范化像真实仓库：message 用 conventional commits（feat/fix/docs/chore/refactor/test），祈使句首行 ≤72 字符，正文（空行后）说明动机与上下文——不要 smoke/test 之类的敷衍提交", {
 		cwd: cwdArg,
-		message: z.string().describe("commit message"),
+		message: z.string().describe('commit message（conventional commits：如 "feat: add retry backoff\n\nSecondary rate limits require …"；首行祈使句 ≤72 字符）'),
 		paths: z.array(z.string()).optional().describe("要 add 的路径（缺省 = 只提交已 staged 的内容）"),
 		adopt: z.boolean().optional().describe("仓库未绑定时按 origin owner 匹配账户并采用（一次性注入，不落盘）"),
 		push_args: z.array(z.string()).optional().describe('透传 git push 的额外参数（如 ["--force"]）'),
