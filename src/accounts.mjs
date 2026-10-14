@@ -147,10 +147,10 @@ export async function cmdCheck(name) {
   if (!names.length) { info('（还没有账户）'); return; }
   for (const n of names) {
     info(`▸ ${n}（${list[n].githubUser}）`);
-    const id = await fetchGithubIdentity(list[n].token, list[n].proxy);
-    if (id.error) { warn(`  token 无效: ${id.error}`); continue; }
+    // 端点节约（2026-10-14 用户定）：/rate_limit 一个请求同时完成验证与余额查询
+    // （401 = token 无效；此端点官方不计限额），不再额外打 /user
     const lim = await fetchLimits(list[n]);
-    if (lim.error) { warn(`  限额查询失败: ${lim.error}`); continue; }
+    if (lim.error) { warn(`  token 无效或查询失败: ${lim.error}`); continue; }
     info(`  token ✓   core ${pct(lim.core)} · search ${pct(lim.search)} · graphql ${pct(lim.graphql)}`);
   }
 }

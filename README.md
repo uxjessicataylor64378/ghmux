@@ -1,6 +1,8 @@
-# ghmux — GitHub 多账户管理 CLI
+# ghmux — GitHub 多账户管理 CLI + MCP
 
-一个零依赖（Node ≥ 20）的命令行工具，掌管 GitHub 多账户的**提交身份、推送凭证、出口 IP 与 API 限流合规**。
+一个零依赖（Node ≥ 20）的命令行工具 + Agent-first 配套 MCP，掌管 GitHub 多账户的**提交身份、推送凭证、出口 IP 与 API 限流合规**。
+
+**对 GitHub 的一切流量经 gh cli**（api/认证/代理），代码零裸 HTTP；推送认证走 `gh auth git-credential`（GH_TOKEN 注入），出口走账户 `proxy`（proxylanes 泳道）。
 
 ## 为什么
 
@@ -71,6 +73,24 @@ API    api [--as <名>] <endpoint> [gh-api参数…] / as <名> -- <命令…>
 ⚠️ **账户的出口节点不可随意更换**（换绑泳道节点 = 换出口 IP = 风控信号）。
 泳道↔账户↔节点的绑定以 accounts-cards 卡片 `exitNode` 为准，不要主动
 switch/heal 已被账户占用的泳道。
+
+## 配套 MCP（Agent-first，hot-mcp 架构）
+
+`mcp/` — Agent 的 GitHub 多账户操作入口（热加载，改 `mcp/tools.mjs` + `reload` 即时生效）：
+
+```
+who          决策查询：某仓库该用哪个账户（绑定/origin 匹配/漂移状态）
+accounts     账户清单（token 不回显）
+check        token 有效性 + 限额余额（按资源池：core/search/graphql）
+commit_push  一击必杀：正确身份提交并推送（漂移纠正/adopt 匹配/gh cli 认证通道）
+api          限流合规 API 网关（一切 GitHub 查询/变更走这里，不自己拼 HTTP）
+as           以账户身份执行任意命令（GH_TOKEN + 出口 env 注入）
+use / unuse  仓库绑定管理
+add / edit   账户管理
+```
+
+注册：`claude mcp add ghmux --scope user -- node <项目>/mcp/index.mjs`；
+冒烟：`node mcp/smoke.mjs`（含双 reload 热加载验证）。
 
 ## 测试
 

@@ -44,6 +44,10 @@ export async function cmdApi(args) {
   requireToken(acc, name);
 
   const method = inferMethod(rest);
+  // 端点节约（2026-10-14 用户定）：GET 默认本地缓存 30s（gh --cache = etag 条件请求，
+  // 304 不计限额）——agent 循环查同一端点时重复调用零请求；显式 --cache/--no-cache 时不覆盖
+  const userCache = rest.some((a) => a === '--cache' || a.startsWith('--cache=') || a === '--no-cache');
+  if (!userCache && !isMutating(method)) rest.push('--cache', '30s');
   const env = accountEnv(acc);
 
   await withApiLock(async () => {

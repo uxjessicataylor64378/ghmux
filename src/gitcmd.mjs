@@ -37,11 +37,6 @@ async function ensureIdentity(name, acc) {
   await run('git', ['config', '--local', 'user.email', acc.email]);
 }
 
-/** --auto 模式的一次性 git 参数：凭证经 -c credential.helper 注入（单 argv 值可含空格，git 以 sh 解析 ! 命令） */
-function autoCredArgs(name) {
-  return ['-c', 'credential.helper=', '-c', `credential.helper=!${selfPath()} git-credential ${name}`];
-}
-
 export async function cmdCommit(args) {
   const auto = extractAuto(args);
   const { name, acc, how } = await resolveAccount(auto);
@@ -65,13 +60,18 @@ export async function cmdPush(args) {
   const { name, acc, how } = await resolveAccount(auto);
   if (how !== 'auto') await ensureIdentity(name, acc);
   if (!acc.token && !acc.sshKey) warn('账户既无 token 也无 sshKey，推送可能要求手动输入凭证');
-  const bits = [name, acc.githubUser, how === 'auto' ? '--auto 一次性凭证' : ''];
+  const bits = [name, acc.githubUser];
   if (acc.proxy) bits.push(`出口 ${acc.proxy}`);
-  info(`▸ 推送（${bits.filter(Boolean).join(' · ')}）`);
-  // 绑定模式：凭证由 use 写入的 local credential helper 提供，代理由 http.<url>.proxy 提供。
-  // --auto 模式：-c 一次性注入专用 helper（清空继承链防 keychain 旧凭证抢先），不落盘。
-  const extra = how === 'auto' && acc.token ? autoCredArgs(name) : [];
-  const code = await runInherit('git', [...extra, 'push', ...args]);
+  info(`▸ 推送（${bits.join(' · ')}，认证/出口经 gh cli 通道）`);
+  // 推送统一走 gh cli 通道（2026-10-14 用户定）：认证用 gh 的 credential helper
+  // （GH_TOKEN env 注入后 gh auth git-credential 输出该账户 token），代理用 env
+  // （https_proxy，与 api/as 同构）。-c 一次性清空继承链防 keychain 旧凭证抢先，
+  // 不落盘；local config 里 use 写的 ghmux helper 继续服务手动 git push 场景。
+  const extra = [
+    '-c', 'credential.helper=',
+    '-c', 'credential.helper=!gh auth git-credential',
+  ];
+  const code = await runInherit('git', [...extra, 'push', ...args], { env: accountEnv(acc) });
   if (code !== 0) die(`git push 退出码 ${code}`, code);
   ok('推送完成');
 }
