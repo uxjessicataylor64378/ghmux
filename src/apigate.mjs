@@ -38,22 +38,24 @@ export async function cmdApi(args) {
     else rest.push(args[i]);
   }
   const noRetry = rest.includes('--no-retry');
-  const endpoint = rest.find((a) => !a.startsWith('-'));
+  // ghmux 自有 flag 在此吞掉，不透传 gh（gh 无 --no-cache/--no-retry flag）
+  const filtered = rest.filter((a) => a !== '--no-cache' && a !== '--no-retry');
+  const endpoint = filtered.find((a) => !a.startsWith('-'));
   if (!endpoint) die('用法: ghmux api [--as <账户>] <endpoint> [gh api 参数…]');
   const { name, acc } = await pickAccount(asFlag);
   requireToken(acc, name);
 
-  const method = inferMethod(rest);
+  const method = inferMethod(filtered);
   // 端点节约（2026-10-14 用户定）：GET 默认本地缓存 30s（gh --cache = etag 条件请求，
   // 304 不计限额）——agent 循环查同一端点时重复调用零请求；显式 --cache/--no-cache 时不覆盖
-  const userCache = rest.some((a) => a === '--cache' || a.startsWith('--cache=') || a === '--no-cache');
-  if (!userCache && !isMutating(method)) rest.push('--cache', '30s');
+  const userCache = filtered.some((a) => a === '--cache' || a.startsWith('--cache=') || a === '--no-cache');
+  if (!userCache && !isMutating(method)) filtered.push('--cache', '30s');
   const env = accountEnv(acc);
 
   await withApiLock(async () => {
     if (isMutating(method)) await throttleMutation();
     for (let attempt = 0; ; attempt++) {
-      const r = await gh(['api', ...rest], { env, allowFail: true });
+      const r = await gh(['api', ...filtered], { env, allowFail: true });
       process.stdout.write(r.out);
       if (r.code === 0) { process.exit(0); }
       if (noRetry || attempt >= MAX_RETRIES) {
