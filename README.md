@@ -10,7 +10,7 @@
 |---|---|
 | 用 A 账号的身份提交了 B 账号的仓库 | `use` 绑定仓库→账户；`commit` 校验身份、漂移自动纠正 |
 | 推送时凭证串号（keychain 里旧 token 抢先） | 专用 credential helper（清空继承链，按仓库注入正确 token） |
-| 多账户同出口 IP（风控信号） | 账户级 `proxy` 字段，push/api 全链路走各自受控出口 |
+| 多账户同出口 IP（风控信号） | 账户级 `proxy` 字段（proxylanes 泳道，一账户一泳道，天然并发隔离） |
 | 限流期间继续打 API → 官方明确会 ban | api 网关：串行锁 + 变异 ≥1s + 退避重试 + 4xx 绝不重试 |
 
 ## 快速上手
@@ -20,7 +20,7 @@ npm install -g .            # 或 npm link 开发模式
 
 ghmux add work \
   --token ghp_xxx \
-  --proxy http://127.0.0.1:7898   # 自动验证 token、回填用户名/noreply 邮箱
+  --proxy http://127.0.0.1:24001   # proxylanes 泳道；自动验证 token、回填用户名/noreply 邮箱
 
 cd 某个仓库
 ghmux use work              # 绑定：提交身份 + 凭证 + 出口写进 local config
@@ -61,11 +61,16 @@ API    api [--as <名>] <endpoint> [gh-api参数…] / as <名> -- <命令…>
 
 ## 出口 IP 纪律（多账户环境）
 
-每个账户可配 `proxy`（如 `http://127.0.0.1:7898` 按地区固定出口）：
+每个账户配 `proxy` 指向 **proxylanes 泳道端口**（24001-24016，一账户一泳道、
+每泳道固定绑定节点——多账户并发推送/调 API 各走各的出口，互不干扰）：
 
 - `use` 时写入 `http.https://github.com/.proxy`（仅该仓库生效）
 - `api` / `as` 注入 `https_proxy` 环境变量
 - `sshKey` 场景自动生成带 `ProxyCommand`（nc connect 隧道）的 `core.sshCommand`
+
+⚠️ **账户的出口节点不可随意更换**（换绑泳道节点 = 换出口 IP = 风控信号）。
+泳道↔账户↔节点的绑定以 accounts-cards 卡片 `exitNode` 为准，不要主动
+switch/heal 已被账户占用的泳道。
 
 ## 测试
 
