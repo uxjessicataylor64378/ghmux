@@ -15,6 +15,7 @@
 import { z } from "zod";
 import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import { loadConfig, saveConfig, getAccount, getAccounts, ACCOUNT_FIELDS } from "../src/store.mjs";
 import { accountEnv, classifyFailure, gh, inferMethod, isMutating, throttleMutation, withApiLock } from "../src/gh.mjs";
 import { expandHome } from "../src/util.mjs";
@@ -245,12 +246,17 @@ export function register(server, ctx) {
 		return ok(`✅ ${top} 已解绑（user/凭证/代理/SSH 配置已清理）`);
 	});
 
-	tool("add", "添加账户（token 必填——MCP 无交互；自动经 gh api user 验证并回填 GitHub 用户名/noreply 邮箱）", {
-		name: z.string(), token: z.string().describe("PAT（classic 建议 repo,workflow,read:org;需删仓加 delete_repo）"),
+	tool("add", "添加账户（token 必填——MCP 无交互；自动经 gh api user 验证并回填 GitHub 用户名/noreply 邮箱）。token 与 tokenFromFile 二选一：tokenFromFile 从本地文件读（敏感凭据不落对话记录的标准姿势，如 accounts-cards 卡片导出）", {
+		name: z.string(),
+		token: z.string().optional().describe("PAT（classic 建议 repo,workflow,read:org;需删仓加 delete_repo）——与 tokenFromFile 二选一"),
+		tokenFromFile: z.string().optional().describe("从文件读 PAT 路径（值首尾空白剥除）——敏感值不经调用参数"),
 		proxy: z.string().optional().describe("受控出口代理（proxylanes 泳道，如 http://127.0.0.1:24001；同类账户不得共用同一出口）"),
 		github_user: z.string().optional().describe("离线时显式指定（缺省在线验证回填）"),
 		email: z.string().optional(), display_name: z.string().optional(),
-	}, async ({ name, token, proxy, github_user, email, display_name }) => {
+	}, async ({ name, token: tokenArg, tokenFromFile, proxy, github_user, email, display_name }) => {
+		let token = tokenArg;
+		if (tokenFromFile) token = readFileSync(resolve(tokenFromFile), "utf8").trim();
+		if (!token) return err("token / tokenFromFile 必须给一个");
 		const cfg = loadConfig();
 		if (cfg.accounts?.[name]) return err(`账户 "${name}" 已存在`);
 		const id = await gh(["api", "user"], { env: { GH_TOKEN: token, ...(proxy ? { https_proxy: proxy, HTTPS_PROXY: proxy } : {}) }, allowFail: true });
