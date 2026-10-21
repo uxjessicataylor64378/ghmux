@@ -130,7 +130,7 @@ export function register(server, ctx) {
 
 	tool("commit_push", "一击必杀：以正确账户身份提交并推送（身份漂移自动纠正；推送认证/出口走 gh cli 通道；完成后回显 author 与远端分支）。agent 改完代码收尾就用它。⚠️ 提交规范化像真实仓库：message 用 conventional commits（feat/fix/docs/chore/refactor/test），祈使句首行 ≤72 字符，正文（空行后）说明动机与上下文——不要 smoke/test 之类的敷衍提交", {
 		cwd: cwdArg,
-		message: z.string().describe('commit message（conventional commits：如 "feat: add retry backoff\n\nSecondary rate limits require …"；首行祈使句 ≤72 字符）'),
+		message: z.string().describe('commit message（conventional commits：如 "feat: add retry backoff\n\nSecondary rate limits require …"；首行祈使句 ≤72 字符）；message 以 "(push)" 结尾且无待提交内容时跳过 commit 只推送既有提交'),
 		paths: z.array(z.string()).optional().describe("要 add 的路径（缺省 = 只提交已 staged 的内容）"),
 		adopt: z.boolean().optional().describe("仓库未绑定时按 origin owner 匹配账户并采用（一次性注入，不落盘）"),
 		push_args: z.array(z.string()).optional().describe('透传 git push 的额外参数（如 ["--force"]）'),
@@ -146,12 +146,17 @@ export function register(server, ctx) {
 			const add = await git(top, ["add", "--", ...paths.map((p) => resolve(cwd, p))]);
 			if (add.code !== 0) return err(`git add 失败: ${add.err}`);
 		}
-		const commitArgs = how === "auto"
-			? ["-c", `user.name=${acc.name}`, "-c", `user.email=${acc.email}`, "commit", "-m", message]
-			: ["commit", "-m", message];
-		const c = await git(top, commitArgs);
-		if (c.code !== 0) return err(`git commit 失败: ${c.err || c.out}`);
-		const author = (await git(top, ["log", "-1", "--format=%an <%ae>"])).out.trim();
+		// push-only 模式（message 以 "(push)" 结尾）：无 staged 内容 + 本地 ahead → 跳过 commit 直接推
+		const staged = (await git(top, ["diff", "--cached", "--name-only"])).out.trim();
+		let author = "";
+		if (!(staged === "" && message.endsWith("(push)"))) {
+			const commitArgs = how === "auto"
+				? ["-c", `user.name=${acc.name}`, "-c", `user.email=${acc.email}`, "commit", "-m", message]
+				: ["commit", "-m", message];
+			const c = await git(top, commitArgs);
+			if (c.code !== 0) return err(`git commit 失败: ${c.err || c.out}`);
+		}
+		author = (await git(top, ["log", "-1", "--format=%an <%ae>"])).out.trim();
 		const push = await git(top,
 			["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential", "push", ...(push_args ?? [])],
 			accountEnv(acc));
@@ -218,8 +223,10 @@ export function register(server, ctx) {
 		const top = await gitTop(cwd);
 		if (!top) return err(`${cwd} 不是 git 仓库`);
 		const set = async (args) => { const r = await git(top, args); if (r.code !== 0) throw new Error(`git config: ${r.err}`); };
+		// unset-all 对不存在的键 exit 5（键本就没配过 = 目标已达成），容错跳过
+		const unset = async (key) => { const r = await git(top, ["config", "--local", "--unset-all", key]); if (r.code !== 0 && r.code !== 5) throw new Error(`git config: ${r.err}`); };
 		try {
-			await set(["config", "--local", "--unset-all", "credential.helper"]);
+			await unset("credential.helper");
 			await set(["config", "--local", "--add", "credential.helper", ""]);
 			// 手动 git push 场景的凭证锚定 ghmux 自有 helper（按绑定账户回显 token）；
 			// ghmux/MCP 的推送则统一 -c 覆盖为 gh cli 通道（GH_TOKEN env 注入）
